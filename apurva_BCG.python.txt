@@ -1,0 +1,100 @@
+1. What is the 2nd most delayed route of the flights operated by ‘Pacific Airways’
+2. What carrier has flown the 3rd most number of flights? How many? 
+3. What airport has the 10th most delays? 
+4. What is the second most popular day of the week to travel? Why? 
+5. What is the 10th most flown route?
+6. What other actionable insights can we gain by leveraging the TranStats dataset?   
+
+pyspark --num-executors 5 --driver-memory 1g --executor-memory 1g
+
+from pyspark.sql.functions import * 
+from pyspark.sql.types import * 
+from pyspark.sql.window import Window
+
+csv = spark.read.csv('/user/hadoop/livetest/hadoop/monthlydata/*', inferSchema=True, header=True)
+#to optimize it, we can define the schema and then use it. It will load much faster
+
+
+#just to fetch records in less time.So reading just 1 file.
+sample = spark.read.csv('/user/hadoop/livetest/hadoop/monthlydata/1.csv', inferSchema=True, header=True)
+
+
+#2. What carrier has flown the 3rd most number of flights? How many? 
+
+#cnt =sample.groupBy("UNIQUE_CARRIER").count().show()
+cnt = csv.groupBy("UNIQUE_CARRIER").count()
+ranks = cnt.withColumn("rank", dense_rank().over(Window.orderBy(desc("count"))))
+ranks.filter(col("rank")<="3").show()
+
+Output :
+
++--------------+-----+----+
+|UNIQUE_CARRIER|count|rank|
++--------------+-----+----+
+|            WN|91564|   1|
+|            DL|59030|   2|
+|            EV|58508|   3|
++--------------+-----+----+
+
+
+
+
+#3.What airport has the 10th most delays?
+
+#delays =sample.groupBy("ORIGIN_AIRPORT_ID").agg({"DEP_DELAY": "sum"}).alias("total_delay")
+delays = csv.groupBy("ORIGIN_AIRPORT_ID").agg({"DEP_DELAY": "sum"}).alias("total_delay")
+delay_ranks = delays.withColumn("rank", dense_rank().over(Window.orderBy(desc("total_delay"))))
+delay_ranks.filter(col("rank")<="10").show()
+
+
+
+#5. What is the 10th most flown route?
+
+
+routes=csv.groupBy("ORIGIN","DEST").count()
+ranks = routes.withColumn("rank", dense_rank().over(Window.orderBy(desc("count"))))
+ranks.filter(col("rank")<="10").show()
+
+4. What is the second most popular day of the week to travel? Why? 
+
+days_df = csv.withColumn('day', dayofweek(csv.FL_DATE))
+days_cnt_df =days_df.groupBy("day").count()
+days_cnt_df.orderBy(desc("count")).show()
+
+#1. What is the 2nd most delayed route of the flights operated by ‘Pacific Airways’
+
+#Could not find much on Pacific Airways in the data.
+Assumed UNIQUE_CARRIER for Pacific Airways is  PA. Dont have data for that.
+
+csv.filter(col("UNIQUE_CARRIER")=="AA" ).select("DEP_DELAY").groupBy("DEP_DELAY").count()
+
+
+
+6. What other actionable insights can we gain by leveraging the TranStats dataset?   
+
+There can be multiple KPI on this dataset. 
+We can do machine learning on this.
+
+1)By finding the busiest day of week, Airlines can send notifications to flyers to reach a airport before x amount of time.
+
+2)Airport and airlines can scale up and scale down their staff and facilities
+
+3)Parking/taxi maintenance and rates can be dynamics.
+
+4)We can build classification models(1 for dept or arrival delay > 15 mins else 0) on this data. 
+and predict the arrival and dept delay of the flights based on airport name , carrier name and date of travell.
+
+5)similarly, we can go for the regression model predicting the arrival and dept delay based upon feature vectors we have
+
+
+
+Few points : 
+
+csv = spark.read.csv('/user/hadoop/livetest/hadoop/monthlydata/*', inferSchema=True, header=True)
+#to optimize it, we can define the schema and then use it. It will load much faster using pyspark.sql.types
+StructField and StructTypes
+
+#We can cache the df according to reusability.
+
+#We can change default shuffle partitions which is 200 based upon the data.
+
